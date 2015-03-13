@@ -1,4 +1,4 @@
-# node 生成环境部署
+# node 生产环境部署
 
 思考:
 
@@ -9,6 +9,7 @@
 - 版本控制和回归机制
 - 日志 / 报警 / 监控
 - 负载均衡方案, 多应用管理
+- **远程控制**
 
 ## node 生成环境中 graceful-reload 方案研究
 
@@ -31,7 +32,7 @@
 
 - 当前如果没有活跃请求, 直接结束进程
 
-```
+```javascript
 // check alive connenctions
 server.getConnections(function(err, count) {
   !count && process.exit(0)
@@ -40,7 +41,7 @@ server.getConnections(function(err, count) {
 
 - 通过 server.close 事件
 
-```
+```javascript
 // 停止接收新的连接请求，但不会立即关闭已经建立的连接，而是会等待这些连接自然结束
 // 实际测试等待时间非常长, 因为默认是 keep-alive 的请求
 server.close(function() {
@@ -50,7 +51,7 @@ server.close(function() {
 
 - 自定义监听器, 在 keep-alive 状态下认为 res.end() 已经完成并手动处理完相关事件后触发
 
-```
+```javascript
 responseCatch.on('state', function(data) {
   data == 1 && process.exit(0)
 })
@@ -58,7 +59,7 @@ responseCatch.on('state', function(data) {
 
 - fallback: setTimeout 5000
 
-```
+```javascript
 setTimeout(function () {
   process.exit(0)
 }, 5000)
@@ -87,15 +88,15 @@ setTimeout(function () {
     * **reload**: 仅在 cluster 模式下服务不中断平滑升级, 同时不会中断当前连接
     * **gracefulReload**: 在 **reload** 基础下发送 `shutdown` 消息, 在业务中可以实现手动的 `reload` 处理逻辑
 
-```
+```javascript
 process.on('shutdown', function () {
-    server.close();
+  server.close()
 
-    // 15 秒后仍然不能关闭所有连接的话就直接停止进程
-    setTimeout(function () {
-        process.exit(0);
-    }, 15000);
-});
+  // 15 秒后仍然不能关闭所有连接的话就直接停止进程
+  setTimeout(function () {
+    process.exit(0)
+  }, 15000)
+})
 ```
 
 - 负载均衡
@@ -124,31 +125,23 @@ $ pm2 deploy ecosystem.json5 production revert 1
 
 - create a user for app deploy
 
-    * 创建 sudo 组用于分配 sudo 权限
-
 ```bash
+# 创建 sudo 组用于分配 sudo 权限
 $ groupadd sudo
-```
 
-    * 允许 sudo 用户组的 sudo 权限
+# 创建部署用户
+$ adduser -g sudo work
 
-```bash
+# 允许 sudo 用户组的 sudo 权限
 $ vi /etc/sudoers
 ```
 
 ```
-# %wheel ALL=(ALL) ALL ==>
+# %wheel ALL=(ALL) ALL
 %sudo ALL=(ALL) ALL
 ```
 
-    * 创建部署用户
-
-```bash
-$ adduser -g sudo work
-```
-
-
-    * 如果 sudo 编译时默认参数 `–with-secure-path` 导致 path 匹配不到
+> 如果 sudo 编译时默认参数 `–with-secure-path` 导致 path 匹配不到
 
 ```bash
 $ vi ~/.bashrc
@@ -177,7 +170,10 @@ sudo pm2 startup centos
 - Deploy monitor
     * create a new bucket on [Keymetrics](https://app.keymetrics.io).
     * link [Keymetrics](https://app.keymetrics.io) on server
-    `pm2 interact xxxxxxxx xxxxxxxxx`
+
+```bash
+$ pm2 interact xxxxxxxx xxxxxxxxx
+```
 
 - ssh-key configuration on dev machine
 
